@@ -3,8 +3,8 @@ from supabase import create_client
 import pandas as pd
 
 # 1. 連線到 Supabase (這裡會使用 GitHub 的 Secrets 設定)
-url = st.secrets["SUPABASE_URL"]
-key = st.secrets["SUPABASE_KEY"]
+url =["SUPABASE_URL"]
+key =["SUPABASE_KEY"]
 supabase = create_client(url, key)
 
 st.title("🏦 Lisa & Rody 雲端銀行")
