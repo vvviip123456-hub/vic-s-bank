@@ -5,7 +5,7 @@ import pandas as pd
 # 1. 連線到 Supabase (這裡會使用 GitHub 的 Secrets 設定)
 SUPABASE_URL = "https://tnjmtcldhwzwheylyzwi.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRuam10Y2xkaHd6d2hleWx5endpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNDY3NzYsImV4cCI6MjA4OTgyMjc3Nn0.6lNYuqH0ymDNQe-GxKkvkRMY9-yIYxawJQKHyqRGAWE"
-supabase = create_client(URL, KEY)
+SUPABASE = create_client(URL, KEY)
 
 st.title("🏦 Lisa & Rody 雲端銀行")
 
