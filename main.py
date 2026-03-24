@@ -49,9 +49,6 @@ if role == "👨 爸爸管理":
         st.error("密碼錯誤，請重新確認喔！")
 
 else:
-    # ... 這裡是原本的「小孩查詢」區塊，不用動它 ...
-
-else:
     st.header("目前餘額查詢")
     view_child = st.selectbox("你想看誰的帳戶？", ["Lisa", "Rody"])
     
