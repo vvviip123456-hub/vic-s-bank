@@ -65,7 +65,7 @@ else:
         total = df['amount'].sum()
         # 顯示大大的餘額
         st.metric(label=f"{view_child} 的總存款", value=f"${total}")
-        st.info(f"💰 預計每年可以領到的 10% 利息： **${int(total * 0.00797)}**")
+        st.info(f"💰 年息 10%，採每月配息 ： **${int(total * 0.00797)}**")
         
         st.subheader("最近存錢紀錄")
         # 整理表格顯示格式
