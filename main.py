@@ -29,8 +29,8 @@ if role == "👨 爸爸管理":
         
         # 👇 這裡請務必保留你剛才填入的「真實亂碼 ID」喔！
         child_ids = {
-            "Lisa": "你的Lisa真實ID",
-            "Rody": "你的Rody真實ID"
+            "Lisa": "c8dca726-4350-46e8-a4d9-eaa7add7eb37",
+            "Rody": "709b97c8-607b-4a2b-a771-6cce36ebc5f7"
         }
 
         if st.button("確認存入"):
