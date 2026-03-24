@@ -40,8 +40,8 @@ else:
     view_child = st.selectbox("你想看誰的帳戶？", ["Lisa", "Rody"])
     
     child_ids = {
-        "Lisa": "填入Lisa的UUID",
-        "Rody": "填入Rody的UUID"
+        "Lisa": "c8dca726-4350-46e8-a4d9-eaa7add7eb37",
+        "Rody": "709b97c8-607b-4a2b-a771-6cce36ebc5f7"
     }
     
     # 從資料庫抓取特定小孩的紀錄
