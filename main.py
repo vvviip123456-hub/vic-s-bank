@@ -13,27 +13,43 @@ st.title("🏦 Lisa & Rody 雲端銀行")
 role = st.sidebar.radio("切換身分", ["👧👦 小孩查詢", "👨 爸爸管理"])
 
 if role == "👨 爸爸管理":
-    st.header("爸比存錢區")
-    child = st.selectbox("選擇小孩", ["Lisa", "Rody"])
-    amount = st.number_input("存入金額", min_value=1, step=10)
-    note = st.text_input("備註", placeholder="例如：幫忙做家事獎勵")
+    st.header("爸比專屬管理區 🔒")
     
-    # 這裡請替換成你資料庫裡的真實 UUID
-    child_ids = {
-        "Lisa": "c8dca726-4350-46e8-a4d9-eaa7add7eb37",
-        "Rody": "709b97c8-607b-4a2b-a771-6cce36ebc5f7"
-    }
-
-    if st.button("確認存入"):
-        data = {
-            "user_id": child_ids[child],
-            "amount": amount,
-            "description": note,
-            "type": "income"
+    # 建立一個密碼輸入框，type="password" 會讓輸入的字變成隱藏的黑點
+    password = st.text_input("請輸入爸比專屬密碼", type="password")
+    
+    # 檢查密碼是否正確
+    if password == "Abc13579@@":
+        st.success("解鎖成功！歡迎爸比。")
+        
+        # 密碼正確才顯示下面的存錢介面
+        child = st.selectbox("選擇小孩", ["Lisa", "Rody"])
+        amount = st.number_input("存入金額", min_value=1, step=10)
+        note = st.text_input("備註", placeholder="例如：幫忙做家事獎勵")
+        
+        # 👇 這裡請務必保留你剛才填入的「真實亂碼 ID」喔！
+        child_ids = {
+            "Lisa": "你的Lisa真實ID",
+            "Rody": "你的Rody真實ID"
         }
-        # 寫入資料庫
-        supabase.table("transactions").insert(data).execute()
-        st.success(f"✅ 已成功幫 {child} 存入 {amount} 元！")
+
+        if st.button("確認存入"):
+            data = {
+                "user_id": child_ids[child],
+                "amount": amount,
+                "description": note,
+                "type": "income"
+            }
+            # 寫入資料庫
+            supabase.table("transactions").insert(data).execute()
+            st.success(f"✅ 已成功幫 {child} 存入 {amount} 元！")
+            
+    # 如果有輸入字，但密碼不對，就跳出警告
+    elif password != "":
+        st.error("密碼錯誤，請重新確認喔！")
+
+else:
+    # ... 這裡是原本的「小孩查詢」區塊，不用動它 ...
 
 else:
     st.header("目前餘額查詢")
@@ -52,7 +68,7 @@ else:
         total = df['amount'].sum()
         # 顯示大大的餘額
         st.metric(label=f"{view_child} 的總存款", value=f"${total}")
-        st.info(f"💰 預計下個月可以領到的 10% 利息： **${int(total * 0.1)}**")
+        st.info(f"💰 預計每年可以領到的 10% 利息： **${int(total * 0.00797)}**")
         
         st.subheader("最近存錢紀錄")
         # 整理表格顯示格式
