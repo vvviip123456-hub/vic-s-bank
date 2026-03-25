@@ -39,15 +39,13 @@ if tw_today.day >= 10:
                     }).execute()
 
 # 【自動化 B：每週一下午 2 點結算時鐘獎勵】
-# 計算本週一的日期與下午2點的結算界線
 curr_week_monday = tw_today - timedelta(days=tw_today.weekday())
 settlement_threshold = datetime(curr_week_monday.year, curr_week_monday.month, curr_week_monday.day, 14, 0, 0)
 
-# 判斷要結算哪一週的資料
 if tw_now >= settlement_threshold:
     settle_week_start = curr_week_monday - timedelta(days=7) # 結算上週
 else:
-    settle_week_start = curr_week_monday - timedelta(days=14) # 結算上上週(因為上週的還沒到本週一下午2點)
+    settle_week_start = curr_week_monday - timedelta(days=14) # 結算上上週
 
 settle_week_end = settle_week_start + timedelta(days=6)
 settlement_desc = f"🎁 {settle_week_start.strftime('%m/%d')}至{settle_week_end.strftime('%m/%d')} 準時任務獎勵"
@@ -55,20 +53,18 @@ reward_mapping = {1:10, 2:20, 3:30, 4:50, 5:60, 6:80, 7:100}
 
 for child_name, c_id in CHILD_IDS.items():
     res_settle = supabase.table("transactions").select("description").eq("user_id", c_id).eq("description", settlement_desc).execute()
-    # 如果這週還沒結算過
     if not res_settle.data:
-        # 抓取該期間的打卡紀錄 (amount == 0 代表打卡)
         clock_res = supabase.table("transactions").select("description").eq("user_id", c_id).eq("amount", 0).execute()
         count = 0
         for i in range(7):
             d_str = f"🕒 任務打卡 ({(settle_week_start + timedelta(days=i)).strftime('%Y-%m-%d')})"
-            if any(r['description'] == d_str for r in clock_res.data):
+            if any(r.get('description') == d_str for r in clock_res.data):
                 count += 1
                 
         reward_amount = reward_mapping.get(count, 0)
-        # 即使是 0 元也寫入紀錄，代表「已結算」，避免下次進站重複計算
+        # ⚠️ 這裡已經將原本導致報錯的 "reward" 改回安全的 "income"
         supabase.table("transactions").insert({
-            "user_id": c_id, "amount": reward_amount, "description": settlement_desc, "type": "reward"
+            "user_id": c_id, "amount": reward_amount, "description": settlement_desc, "type": "income"
         }).execute()
 # ==========================================
 
@@ -97,23 +93,22 @@ if role == "👨 爸爸管理":
                 
         with tab2:
             edit_child = st.selectbox("選擇小孩", ["Lisa", "Rody"], key="edit_child")
-            # 撈取非打卡的實質金額紀錄來修改
             res = supabase.table("transactions").select("*").eq("user_id", CHILD_IDS[edit_child]).order("created_at", desc=True).execute()
             edit_df = pd.DataFrame(res.data)
             
             if not edit_df.empty:
-                real_records = edit_df[edit_df['amount'] != 0] # 過濾掉0元的打卡紀錄
+                real_records = edit_df[edit_df['amount'] != 0]
                 for index, row in real_records.iterrows():
-                    with st.expander(f"{row['created_at'][:10]} | {row['description']} | ${row['amount']}"):
-                        new_amt = st.number_input("修改金額", value=int(row['amount']), key=f"amt_{row['id']}")
-                        new_desc = st.text_input("修改備註", value=str(row['description']), key=f"desc_{row['id']}")
+                    with st.expander(f"{row.get('created_at', '')[:10]} | {row.get('description', '')} | ${row.get('amount', 0)}"):
+                        new_amt = st.number_input("修改金額", value=int(row.get('amount', 0)), key=f"amt_{row.get('id')}")
+                        new_desc = st.text_input("修改備註", value=str(row.get('description', '')), key=f"desc_{row.get('id')}")
                         
                         col1, col2 = st.columns(2)
-                        if col1.button("✅ 更新", key=f"upd_{row['id']}"):
-                            supabase.table("transactions").update({"amount": new_amt, "description": new_desc}).eq("id", row['id']).execute()
+                        if col1.button("✅ 更新", key=f"upd_{row.get('id')}"):
+                            supabase.table("transactions").update({"amount": new_amt, "description": new_desc}).eq("id", row.get('id')).execute()
                             st.rerun()
-                        if col2.button("❌ 刪除", key=f"del_{row['id']}"):
-                            supabase.table("transactions").delete().eq("id", row['id']).execute()
+                        if col2.button("❌ 刪除", key=f"del_{row.get('id')}"):
+                            supabase.table("transactions").delete().eq("id", row.get('id')).execute()
                             st.rerun()
             else:
                 st.info("目前還沒有可修改的紀錄喔！")
@@ -138,34 +133,31 @@ else:
         st.subheader("🎯 本週準時任務打卡")
         st.write("每天準時完成任務可以點亮一個時鐘！")
         
-        # 找出本週的星期一到星期日
         week_start = tw_today - timedelta(days=tw_today.weekday())
         weekdays_name = ["一", "二", "三", "四", "五", "六", "日"]
         
-        # 建立 7 個欄位並排顯示時鐘
         cols = st.columns(7)
         for i in range(7):
             current_day = week_start + timedelta(days=i)
             day_str = current_day.strftime('%Y-%m-%d')
             target_desc = f"🕒 任務打卡 ({day_str})"
             
-            # 檢查是否已經打卡
             is_completed = any(row.get('description') == target_desc for row in response.data)
             
             with cols[i]:
                 st.caption(f"週{weekdays_name[i]}")
                 if is_completed:
-                    st.markdown("### ⏰") # 已完成，顯示有顏色的時鐘
+                    st.markdown("### ⏰")
                 else:
                     if current_day == tw_today:
-                        # 只有「今天」且「還沒打卡」才會顯示可點擊的按鈕
                         if st.button("⚪", key=f"btn_{day_str}", help="點擊打卡今天任務！"):
+                            # ⚠️ 這裡也已經將 "reward" 改回 "income"
                             supabase.table("transactions").insert({
-                                "user_id": CHILD_IDS[view_child], "amount": 0, "description": target_desc, "type": "reward"
+                                "user_id": CHILD_IDS[view_child], "amount": 0, "description": target_desc, "type": "income"
                             }).execute()
                             st.rerun()
                     else:
-                        st.markdown("### ⚪") # 過去或未來，顯示空白圓圈
+                        st.markdown("### ⚪")
                         
         st.divider()
         
@@ -186,9 +178,7 @@ else:
                 
         st.divider()
         
-        # --- 📜 歷史紀錄區 ---
         st.subheader("最近存提紀錄")
-        # 過濾掉 0 元的打卡內部紀錄，保持畫面乾淨
         real_transactions = df[df['amount'] != 0]
         if not real_transactions.empty:
             display_df = real_transactions[['created_at', 'amount', 'description']].sort_values('created_at', ascending=False)
