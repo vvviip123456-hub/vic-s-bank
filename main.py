@@ -16,37 +16,60 @@ CHILD_IDS = {
     "Rody": "709b97c8-607b-4a2b-a771-6cce36ebc5f7"
 }
 
-# ==========================================
-# 🌟 自動配息系統 (每月 10 日自動觸發)
-# ==========================================
 # 取得台灣時間 (UTC+8)
 tw_now = datetime.utcnow() + timedelta(hours=8)
+tw_today = tw_now.date()
 
-# 只要是 10 號(含)之後，就檢查是否需要發放本月利息
-if tw_now.day >= 10:
-    interest_desc = f"💰 {tw_now.year}年{tw_now.month}月配息"
-    
+# ==========================================
+# 🌟 系統自動化處理區 (進站自動執行)
+# ==========================================
+# 【自動化 A：每月 10 日自動配息】
+if tw_today.day >= 10:
+    interest_desc = f"💰 {tw_today.year}年{tw_today.month}月配息"
     for child_name, c_id in CHILD_IDS.items():
-        # 抓取該小孩的紀錄來檢查
         res = supabase.table("transactions").select("amount, description").eq("user_id", c_id).execute()
-        
         if res.data:
-            # 檢查這個月是不是已經發過這筆配息了 (避免重複發放)
             already_paid = any(interest_desc == str(row.get("description", "")) for row in res.data)
-            
             if not already_paid:
-                # 計算總餘額與利息 (0.797%)
                 total_balance = sum(row.get("amount", 0) for row in res.data)
                 interest = int(total_balance * 0.00797)
-                
-                # 如果利息大於 0，就自動存入資料庫
                 if interest > 0:
                     supabase.table("transactions").insert({
-                        "user_id": c_id,
-                        "amount": interest,
-                        "description": interest_desc,
-                        "type": "income"
+                        "user_id": c_id, "amount": interest, "description": interest_desc, "type": "income"
                     }).execute()
+
+# 【自動化 B：每週一下午 2 點結算時鐘獎勵】
+# 計算本週一的日期與下午2點的結算界線
+curr_week_monday = tw_today - timedelta(days=tw_today.weekday())
+settlement_threshold = datetime(curr_week_monday.year, curr_week_monday.month, curr_week_monday.day, 14, 0, 0)
+
+# 判斷要結算哪一週的資料
+if tw_now >= settlement_threshold:
+    settle_week_start = curr_week_monday - timedelta(days=7) # 結算上週
+else:
+    settle_week_start = curr_week_monday - timedelta(days=14) # 結算上上週(因為上週的還沒到本週一下午2點)
+
+settle_week_end = settle_week_start + timedelta(days=6)
+settlement_desc = f"🎁 {settle_week_start.strftime('%m/%d')}至{settle_week_end.strftime('%m/%d')} 準時任務獎勵"
+reward_mapping = {1:10, 2:20, 3:30, 4:50, 5:60, 6:80, 7:100}
+
+for child_name, c_id in CHILD_IDS.items():
+    res_settle = supabase.table("transactions").select("description").eq("user_id", c_id).eq("description", settlement_desc).execute()
+    # 如果這週還沒結算過
+    if not res_settle.data:
+        # 抓取該期間的打卡紀錄 (amount == 0 代表打卡)
+        clock_res = supabase.table("transactions").select("description").eq("user_id", c_id).eq("amount", 0).execute()
+        count = 0
+        for i in range(7):
+            d_str = f"🕒 任務打卡 ({(settle_week_start + timedelta(days=i)).strftime('%Y-%m-%d')})"
+            if any(r['description'] == d_str for r in clock_res.data):
+                count += 1
+                
+        reward_amount = reward_mapping.get(count, 0)
+        # 即使是 0 元也寫入紀錄，代表「已結算」，避免下次進站重複計算
+        supabase.table("transactions").insert({
+            "user_id": c_id, "amount": reward_amount, "description": settlement_desc, "type": "reward"
+        }).execute()
 # ==========================================
 
 # 2. 側邊欄：切換身分
@@ -57,9 +80,7 @@ if role == "👨 爸爸管理":
     password = st.text_input("請輸入爸比專屬密碼", type="password")
     
     if password == "Abc13579@@":
-        st.success("解鎖成功！歡迎爸比。")
-        
-        # 使用 Tabs 把新增和修改功能分開
+        st.success("解鎖成功！")
         tab1, tab2 = st.tabs(["💰 新增存款", "📝 修改/刪除紀錄"])
         
         with tab1:
@@ -68,46 +89,40 @@ if role == "👨 爸爸管理":
             note = st.text_input("備註", placeholder="例如：幫忙做家事獎勵", key="add_note")
             
             if st.button("確認存入"):
-                data = {
-                    "user_id": CHILD_IDS[child],
-                    "amount": amount,
-                    "description": note,
-                    "type": "income"
-                }
-                supabase.table("transactions").insert(data).execute()
-                st.success(f"✅ 已成功幫 {child} 存入 {amount} 元！")
+                supabase.table("transactions").insert({
+                    "user_id": CHILD_IDS[child], "amount": amount, "description": note, "type": "income"
+                }).execute()
+                st.success(f"✅ 已成功存入 {amount} 元！")
                 st.rerun()
                 
         with tab2:
-            edit_child = st.selectbox("選擇要修改紀錄的小孩", ["Lisa", "Rody"], key="edit_child")
+            edit_child = st.selectbox("選擇小孩", ["Lisa", "Rody"], key="edit_child")
+            # 撈取非打卡的實質金額紀錄來修改
             res = supabase.table("transactions").select("*").eq("user_id", CHILD_IDS[edit_child]).order("created_at", desc=True).execute()
             edit_df = pd.DataFrame(res.data)
             
             if not edit_df.empty:
-                for index, row in edit_df.iterrows():
-                    with st.expander(f"紀錄：{row['created_at'][:16]} | {row['description']} | ${row['amount']}"):
+                real_records = edit_df[edit_df['amount'] != 0] # 過濾掉0元的打卡紀錄
+                for index, row in real_records.iterrows():
+                    with st.expander(f"{row['created_at'][:10]} | {row['description']} | ${row['amount']}"):
                         new_amt = st.number_input("修改金額", value=int(row['amount']), key=f"amt_{row['id']}")
                         new_desc = st.text_input("修改備註", value=str(row['description']), key=f"desc_{row['id']}")
                         
                         col1, col2 = st.columns(2)
-                        if col1.button("✅ 更新這筆", key=f"upd_{row['id']}"):
+                        if col1.button("✅ 更新", key=f"upd_{row['id']}"):
                             supabase.table("transactions").update({"amount": new_amt, "description": new_desc}).eq("id", row['id']).execute()
-                            st.success("更新成功！")
                             st.rerun()
-                            
-                        if col2.button("❌ 刪除這筆", key=f"del_{row['id']}"):
+                        if col2.button("❌ 刪除", key=f"del_{row['id']}"):
                             supabase.table("transactions").delete().eq("id", row['id']).execute()
-                            st.warning("紀錄已刪除！")
                             st.rerun()
             else:
-                st.info("目前還沒有紀錄可以修改喔！")
-                
+                st.info("目前還沒有可修改的紀錄喔！")
     elif password != "":
-        st.error("密碼錯誤，請重新確認喔！")
+        st.error("密碼錯誤喔！")
 
 else:
-    st.header("目前餘額查詢")
-    view_child = st.selectbox("你想看誰的帳戶？", ["Lisa", "Rody"])
+    st.header("首頁與存款查詢")
+    view_child = st.selectbox("你是誰？", ["Lisa", "Rody"])
     
     response = supabase.table("transactions").select("*").eq("user_id", CHILD_IDS[view_child]).execute()
     df = pd.DataFrame(response.data)
@@ -115,36 +130,72 @@ else:
     if not df.empty:
         total = df['amount'].sum()
         st.metric(label=f"{view_child} 的總存款", value=f"${total}")
-        st.info(f"💡 年息 10%，每月 10 日系統會自動結算並發放配息！")
+        st.info(f"💡 年息 10% 自動配息。週一 14:00 自動發放上週打卡獎金！")
         
         st.divider()
         
-        # --- 小孩新增的支出區塊 ---
+        # --- ⏰ 每日準時任務打卡區 ---
+        st.subheader("🎯 本週準時任務打卡")
+        st.write("每天準時完成任務可以點亮一個時鐘！")
+        
+        # 找出本週的星期一到星期日
+        week_start = tw_today - timedelta(days=tw_today.weekday())
+        weekdays_name = ["一", "二", "三", "四", "五", "六", "日"]
+        
+        # 建立 7 個欄位並排顯示時鐘
+        cols = st.columns(7)
+        for i in range(7):
+            current_day = week_start + timedelta(days=i)
+            day_str = current_day.strftime('%Y-%m-%d')
+            target_desc = f"🕒 任務打卡 ({day_str})"
+            
+            # 檢查是否已經打卡
+            is_completed = any(row.get('description') == target_desc for row in response.data)
+            
+            with cols[i]:
+                st.caption(f"週{weekdays_name[i]}")
+                if is_completed:
+                    st.markdown("### ⏰") # 已完成，顯示有顏色的時鐘
+                else:
+                    if current_day == tw_today:
+                        # 只有「今天」且「還沒打卡」才會顯示可點擊的按鈕
+                        if st.button("⚪", key=f"btn_{day_str}", help="點擊打卡今天任務！"):
+                            supabase.table("transactions").insert({
+                                "user_id": CHILD_IDS[view_child], "amount": 0, "description": target_desc, "type": "reward"
+                            }).execute()
+                            st.rerun()
+                    else:
+                        st.markdown("### ⚪") # 過去或未來，顯示空白圓圈
+                        
+        st.divider()
+        
+        # --- 🛍️ 新增支出區塊 ---
         st.subheader("🛍️ 我想花錢 (新增支出)")
         expense_amt = st.number_input("支出金額", min_value=1, step=10, key="exp_amt")
         expense_note = st.text_input("買了什麼？", placeholder="例如：買文具、買零食", key="exp_note")
         
         if st.button("確認支出"):
             if expense_amt > total:
-                st.error("🛑 餘額不足！你沒有這麼多錢可以花喔！快去幫忙做家事賺錢吧！")
+                st.error("🛑 餘額不足喔！快去達成任務賺錢吧！")
             else:
-                # 支出金額以「負數」存入
-                data = {
-                    "user_id": CHILD_IDS[view_child],
-                    "amount": -expense_amt,
-                    "description": f"支出：{expense_note}",
-                    "type": "expense"
-                }
-                supabase.table("transactions").insert(data).execute()
+                supabase.table("transactions").insert({
+                    "user_id": CHILD_IDS[view_child], "amount": -expense_amt, "description": f"支出：{expense_note}", "type": "expense"
+                }).execute()
                 st.success(f"✅ 已成功紀錄支出 {expense_amt} 元！")
                 st.rerun()
                 
         st.divider()
         
+        # --- 📜 歷史紀錄區 ---
         st.subheader("最近存提紀錄")
-        display_df = df[['created_at', 'amount', 'description']].sort_values('created_at', ascending=False)
-        display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.tz_convert('Asia/Taipei').dt.strftime('%Y-%m-%d %H:%M')
-        display_df.columns = ['時間', '金額', '備註']
-        st.dataframe(display_df, use_container_width=True)
+        # 過濾掉 0 元的打卡內部紀錄，保持畫面乾淨
+        real_transactions = df[df['amount'] != 0]
+        if not real_transactions.empty:
+            display_df = real_transactions[['created_at', 'amount', 'description']].sort_values('created_at', ascending=False)
+            display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.tz_convert('Asia/Taipei').dt.strftime('%Y-%m-%d')
+            display_df.columns = ['日期', '金額', '備註']
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        else:
+            st.write("目前還沒有金錢紀錄喔！")
     else:
-        st.info("目前還沒有存錢紀錄喔！趕快請爸爸存第一筆錢吧！")
+        st.info("目前還沒有任何紀錄喔！趕快請爸爸存第一筆錢吧！")
